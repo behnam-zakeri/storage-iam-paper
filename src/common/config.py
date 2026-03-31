@@ -18,7 +18,7 @@ NOTEBOOK_DIR = PROJECT_ROOT / "notebooks"
 SURVEY_DATA_DIR = DATA_DIR / "survey"
 SURVEY_OUTPUT_DIR = OUTPUT_DIR / "survey"
 
-SURVEY_XLSX = SURVEY_DATA_DIR / "storage-in-IAMs_submission.xlsx"
+SURVEY_XLSX = SURVEY_DATA_DIR / "storage-in-IAMs_survey.xlsx"
 
 # Survey sheet names
 SHEET_FIG2 = "Figure-2"
@@ -38,8 +38,8 @@ ANALYSIS_OUTPUT_DIR = OUTPUT_DIR / "analysis"
 SUPPLEMENTARY_DATA_DIR = DATA_DIR / "supplementary"
 SUPPLEMENTARY_OUTPUT_DIR = OUTPUT_DIR / "supplementary"
 
-IAMC_CSV = ANALYSIS_DATA_DIR / "ecemf_storage_in_iams.csv"
-PYPSA_XLSX = ANALYSIS_DATA_DIR / "pypsa_capacities.xlsx"
+IAMC_CSV = ANALYSIS_DATA_DIR / "ecemf_netzero_scenario_data.csv"
+PYPSA_XLSX = ANALYSIS_DATA_DIR / "pypsa_eur_data.xlsx"
 PYPSA_SHEET = "pypsa"
 FIG4_SOURCE_DATA_XLSX = ANALYSIS_DATA_DIR / "Figure-4_source-data.xlsx"
 

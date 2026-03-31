@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from config import (
+from src.common.config import (
     SHEET_FIG2,
     CATEGORY_MAP,
     CATEGORY_ORDER,

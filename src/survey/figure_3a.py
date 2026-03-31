@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 
-from config import (
+from src.common.config import (
     SHEET_FIG3,
     MODEL_ORDER,
     MODEL_DISPLAY,

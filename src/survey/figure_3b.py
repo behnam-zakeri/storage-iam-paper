@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 from matplotlib.patches import Rectangle
 
-from config import SHEET_FIG3, MODEL_DISPLAY_SHORT
+from src.common.config import SHEET_FIG3, MODEL_DISPLAY_SHORT
 from src.common.io_utils import read_excel_sheet
 
 

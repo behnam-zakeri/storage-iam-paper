@@ -2,7 +2,7 @@
 
 This repository provides the data and code supporting the analysis in:
 
-Zakeri et al. (2026) — *Electricity storage in climate mitigation models* (under review).
+Zakeri et al. (2026): *Electricity storage in climate mitigation models* (under review).
 
 ## Scope
 
@@ -29,22 +29,24 @@ Outputs are saved to:
 Input datasets:
 
 - IAM scenario data (IAMC format):  
-  `data/analysis/ecemf_storage_in_iams.csv`
+  `data/analysis/ecemf_netzero_scenario_data.csv`
 - PyPSA benchmark data:  
-  `data/analysis/pypsa_capacities.xlsx`
+  `data/analysis/pypsa_eur_data.xlsx`
 - Survey data:  
-  `data/survey/storage-in-IAMs_submission.xlsx`
+  `data/survey/storage-in-IAMs_survey.xlsx`
 
 Derived data:
 
 - Figure 4 source data:  
   `data/analysis/Figure-4_source-data.xlsx`
+- Supplementary Figures source data:  
+  `data/supplementary/Figure-S_source-data.xlsx`
 
 ## Methodological notes
 
 ### Storage intensity (peak load)
 
-Peak electricity demand is inferred from annual electricity demand:
+Peak electricity demand is inferred from annual electricity demand (Figure 4b):
 
     GW_peak = EJ * 31.7 / load_factor
 
@@ -53,7 +55,7 @@ with:
 
 ### Hydrogen capacity inference
 
-Where electrolyser capacity is not reported:
+Where electrolyser capacity is not reported (Figure 4c):
 
 - efficiency = 0.70  
 - capacity factor = 0.70  
@@ -62,7 +64,7 @@ Capacity is inferred from hydrogen production.
 
 ### Flexibility indicators
 
-Indicators include:
+Indicators include (Figure 4c):
 
 - storage capacity ratios  
 - flexible generation  
@@ -139,8 +141,6 @@ Results and data may be updated following the review process.
 
 Current repository lead:
 - Behnam Zakeri (zakeri@iiasa.ac.at)
-
-Additional contributors may be added as the project evolves.
 
 ## Citation and sharing
 

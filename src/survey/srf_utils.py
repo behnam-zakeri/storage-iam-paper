@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from matplotlib.patches import Wedge, Circle
 
-from config import DIMENSION_SPECS, FIG3A_LAYOUT
+from src.common.config import DIMENSION_SPECS, FIG3A_LAYOUT
 
 
 def short_indicator_label(text):
