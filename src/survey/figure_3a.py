@@ -56,13 +56,13 @@ def make_figure3a(xlsx_file):
             show_dim_labels_guide=True,
             show_criterion_labels=True,
         )
-        ax.set_title("Guidance", fontsize=10, pad=15, color="0.15", fontweight="bold")
+        ax.set_title("Guidance", fontsize=11, pad=15, color="0.15", fontweight="bold")
 
     # layout
-    fig = plt.figure(figsize=(18.2, 7.2))
+    fig = plt.figure(figsize=(16, 7.2))
     gs = fig.add_gridspec(
         2, 5,
-        width_ratios=[1, 1, 1, 1, 0.7],
+        width_ratios=[1, 1, 1, 1, 1],
         height_ratios=[1, 1],
         wspace=0.02,
         hspace=0.06
@@ -85,7 +85,7 @@ def make_figure3a(xlsx_file):
             show_dim_labels=True,
             show_criterion_labels=False
         )
-        ax.set_title(MODEL_DISPLAY.get(model, model), fontsize=11, pad=1, fontweight="bold")
+        ax.set_title(MODEL_DISPLAY.get(model, model), fontsize=11, pad=1)
 
     guide_ax = fig.add_subplot(gs[:, 4])
     add_explainer(guide_ax)
