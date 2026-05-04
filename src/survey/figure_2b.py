@@ -8,7 +8,7 @@ from src.common.config import SHEET_FIG3, MODEL_DISPLAY_SHORT
 from src.common.io_utils import read_excel_sheet
 
 
-def make_figure3b(xlsx_file):
+def make_figure2b(xlsx_file):
     raw = read_excel_sheet(xlsx_file, SHEET_FIG3)
 
     # support Criterion / Criteria

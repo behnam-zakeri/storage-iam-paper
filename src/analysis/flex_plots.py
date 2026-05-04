@@ -9,7 +9,10 @@ from matplotlib.patches import Rectangle
 
 from src.common.config import ANALYSIS_OUTPUT_DIR, SELECTED_REGION, SELECTED_SCENARIO
 from src.common.plot_utils import save_figure
-from src.analysis.flex_metrics import get_storage_metric_column
+from src.analysis.flex_metrics import (
+    get_storage_metric_column,
+    compute_flexibility_portfolio_diagnostics,
+)
 
 
 def _coerce_indicator_values(df: pd.DataFrame, indicators: list[str]) -> pd.DataFrame:
@@ -58,7 +61,7 @@ def plot_minibars_portfolio_clean(
     save_png: bool = True,
     save_pdf: bool = False,
     save_svg: bool = False,
-    title_prefix: str = "c) Electricity storage & flexibility portfolio",
+    title_prefix: str = "a) Electricity storage & flexibility portfolio",
     subtitle: str = "(EU27 & UK, NetZero scenario, 2050)",
     faint_bars: bool = False,
 ):
@@ -105,7 +108,7 @@ def plot_minibars_portfolio_clean(
         tiers = np.array(["Unknown"] * n_models)
 
     # figure sizing
-    fig_w = 1.25 * n_cols + 2.2
+    fig_w = 1 * n_cols + 2.2
     fig_h = max(2.2, 0.22 * n_models)
 
     fig, axes = plt.subplots(
@@ -262,7 +265,7 @@ def plot_minibars_portfolio_clean(
     return fig, axes
 
 
-def build_figure4c_inputs(
+def build_figure4a_inputs(
     indices: pd.DataFrame,
     storage_col: str | None = None,
 ) -> tuple[list[str], list[str]]:
@@ -291,7 +294,7 @@ def build_figure4c_inputs(
     return indicators, titles
 
 
-def make_figure4c(
+def make_figure4a(
     indices: pd.DataFrame,
     save_png: bool = True,
     save_pdf: bool = False,
@@ -311,7 +314,7 @@ def make_figure4c(
         Output from compute_flex_ratios_all().
     """
     storage_col = get_storage_metric_column(indices)
-    indicators, titles = build_figure4c_inputs(indices, storage_col=storage_col)
+    indicators, titles = build_figure4a_inputs(indices, storage_col=storage_col)
 
     # Subtitle from data when available
     region = str(indices["region"].iloc[0]) if "region" in indices.columns and not indices.empty else SELECTED_REGION
@@ -333,7 +336,7 @@ def make_figure4c(
         save_png=save_png,
         save_pdf=save_pdf,
         save_svg=save_svg,
-        title_prefix="c) Electricity storage & flexibility portfolio",
+        title_prefix="a) Electricity storage & flexibility portfolio",
         subtitle=subtitle,
     )
 
@@ -361,5 +364,325 @@ def make_figure4c(
 
     source_data = indices.reset_index().copy()
     source_data = source_data[["model"] + keep_cols]
+
+    return fig, source_data
+
+def plot_flexibility_portfolio_scatter(
+    df: pd.DataFrame,
+    outfile_stem: str | None = None,
+    save_png: bool = True,
+    save_pdf: bool = False,
+    save_svg: bool = False,
+):
+    """
+    flexibility breadth vs balance, with point size showing portfolio intensity
+    and discrete colour classes showing storage index.
+    """
+    d = df.copy()
+
+    required = ["model", "breadth", "balance", "intensity", "storage"]
+    missing = [c for c in required if c not in d.columns]
+    if missing:
+        raise ValueError(
+            "Missing required columns for Figure 4d plotting: "
+            + ", ".join(missing)
+        )
+
+    for col in ["breadth", "balance", "intensity", "storage"]:
+        d[col] = pd.to_numeric(d[col], errors="coerce")
+
+    rng = np.random.default_rng(42)
+
+    x = d["breadth"].to_numpy(dtype=float)
+    y = d["balance"].to_numpy(dtype=float)
+
+    x_plot = np.clip(x + rng.uniform(-0.015, 0.015, len(d)), 0, 1)
+    y_plot = np.clip(y, 0, 1)
+
+    intensity_vals = np.nan_to_num(d["intensity"].to_numpy(dtype=float), nan=0.0)
+    sizes = 50 + 2000 * intensity_vals
+
+    storage_vals = d["storage"].to_numpy(dtype=float)
+
+    storage_bins = [0.00, 0.05, 0.08, 0.11, np.inf]
+    storage_labels = [
+        "≤0.05",
+        "0.05–0.08",
+        "0.08–0.11",
+        ">0.11",
+    ]
+
+    #storage_colors = plt.cm.Purples(np.linspace(0.30, 0.90, 4))
+    from matplotlib.colors import to_rgb
+
+    base = np.array(to_rgb("mediumorchid"))
+    white = np.array([1, 1, 1])
+    
+    # blend factors: low → high intensity
+    blend = [0.75, 0.55, 0.35, 0.10]
+    
+    storage_colors = [
+        tuple(base * (1 - b) + white * b) for b in blend
+    ]
+
+    storage_class = pd.cut(
+        d["storage"],
+        bins=storage_bins,
+        labels=False,
+        include_lowest=True,
+        right=True,
+    )
+
+    fig, ax = plt.subplots(figsize=(9.5, 5.6))
+
+    # Guide lines dividing the diagnostic space
+    ax.axvline(
+        0.5,
+        color="0.55",
+        linewidth=0.8,
+        linestyle="--",
+        alpha=0.55,
+        zorder=1,
+    )
+    ax.axhline(
+        0.5,
+        color="0.55",
+        linewidth=0.8,
+        linestyle="--",
+        alpha=0.55,
+        zorder=1,
+    )
+
+    # Quadrant annotations
+    quadrant_kw = dict(
+        transform=ax.transAxes,
+        fontsize=8.5,
+        color="0.35",
+        ha="center",
+        va="center",
+        zorder=2,
+    )
+    ax.text(0.25, 0.08, "narrow\nuneven", **quadrant_kw)
+    ax.text(0.75, 0.08, "broad\nuneven", **quadrant_kw)
+    ax.text(0.25, 0.92, "narrow\nbalanced", **quadrant_kw)
+    ax.text(0.75, 0.92, "broad\nbalanced", **quadrant_kw)
+
+    # Draw points by discrete storage class
+    for i in range(4):
+        mask = storage_class.to_numpy() == i
+        if np.any(mask):
+            ax.scatter(
+                x_plot[mask],
+                y_plot[mask],
+                s=sizes[mask],
+                color=storage_colors[i],
+                alpha=0.90,
+                edgecolors="black",
+                linewidths=0.7,
+                zorder=3,
+            )
+
+    # Missing storage values, if any
+    missing_storage = ~np.isfinite(storage_vals)
+    if np.any(missing_storage):
+        ax.scatter(
+            x_plot[missing_storage],
+            y_plot[missing_storage],
+            s=sizes[missing_storage],
+            color="0.85",
+            alpha=0.90,
+            edgecolors="black",
+            linewidths=0.7,
+            zorder=3,
+        )
+
+    label_offsets = {
+        "WITCH": (-8, 2),
+        "REMIND": (8, 2),
+        "IMAGE": (9, -2),
+        "MESSAGEix": (-10, 4),
+        "MEESA": (10, 1),
+        "AIM-T": (10, -2),
+        "PROMETHEUS": (8, 2),
+        "TIAM-ECN": (6, 4),
+    }
+
+    for i, row in d.reset_index(drop=True).iterrows():
+        model = str(row["model"])
+        dx, dy = label_offsets.get(model, (6, 5))
+
+        ax.annotate(
+            model,
+            (x_plot[i], y_plot[i]),
+            xytext=(dx, dy),
+            textcoords="offset points",
+            fontsize=8.5,
+            ha="left" if dx >= 0 else "right",
+            va="bottom",
+            zorder=4,
+        )
+
+    ax.set_xlabel("Breadth", fontsize=11)
+    ax.set_ylabel("Balance", fontsize=11)
+    ax.set_title("b) Flexibility portfolio diagnostics", fontweight="bold",
+                 fontsize=12, pad=14)
+
+    ax.set_xlim(-0.02, 1.02)
+    ax.set_ylim(-0.02, 1.02)
+
+    ax.tick_params(axis="both", labelsize=10)
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    ax.grid(True, linewidth=0.45, alpha=0.10, zorder=0)
+
+    # External storage legend
+    storage_handles = [
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            linestyle="",
+            markerfacecolor=storage_colors[i],
+            markeredgecolor="black",
+            markeredgewidth=0.7,
+            markersize=8,
+            label=storage_labels[i],
+        )
+        for i in range(4)
+    ]
+
+    if np.any(missing_storage):
+        storage_handles.append(
+            Line2D(
+                [0],
+                [0],
+                marker="o",
+                linestyle="",
+                markerfacecolor="0.85",
+                markeredgecolor="black",
+                markeredgewidth=0.7,
+                markersize=8,
+                label="missing",
+            )
+        )
+
+    legend_storage = ax.legend(
+        handles=storage_handles,
+        title="Storage index",
+        loc="upper left",
+        bbox_to_anchor=(1.01, 1.00),
+        frameon=False,
+        fontsize=8.5,
+        title_fontsize=9.5,
+        borderaxespad=0.0,
+    )
+    ax.add_artist(legend_storage)
+
+    # External bubble-size legend
+    intensity_levels = [0.05, 0.10, 0.15]
+    size_handles = [
+        ax.scatter(
+            [],
+            [],
+            s=50 + 2000 * val,
+            color="0.75",
+            edgecolors="black",
+            linewidths=0.7,
+            alpha=0.90,
+            label=f"{val:.2f}",
+        )
+        for val in intensity_levels
+    ]
+
+    ax.legend(
+        handles=size_handles,
+        title="Portfolio\nintensity",
+        loc="upper left",
+        bbox_to_anchor=(1.01, 0.48),
+        frameon=False,
+        fontsize=8.5,
+        title_fontsize=9.5,
+        labelspacing=1.2,
+        borderaxespad=0.0,
+    )
+
+    fig.subplots_adjust(left=0.10, right=0.68)
+
+    if outfile_stem:
+        save_figure(
+            fig,
+            ANALYSIS_OUTPUT_DIR / outfile_stem,
+            save_png=save_png,
+            save_pdf=save_pdf,
+            save_svg=save_svg,
+        )
+
+    return fig, ax
+
+
+def make_figure4b(
+    indices: pd.DataFrame,
+    save_png: bool = True,
+    save_pdf: bool = False,
+    save_svg: bool = False,
+):
+    """
+    Manuscript Figure 4b:
+    Flexibility portfolio diagnostics.
+
+    Uses the output from compute_flex_ratios_all(), i.e. the same input table
+    as Figure 4a.
+    """
+    storage_col = get_storage_metric_column(indices)
+
+    indicator_cols = [
+        storage_col,
+        "r_flexible_gen_over_total_electricity",
+        "r_flexible_demand_proxy",
+        "r_h2_electrolyzer_capacity_over_total_elec_capacity",
+        "r_spatial",
+        "r_curt",
+    ]
+
+    diag = compute_flexibility_portfolio_diagnostics(
+        indices=indices,
+        indicator_cols=indicator_cols,
+        model_col="model",
+        tau=0.02,
+        invert_curtailment=False,
+    )
+
+    fig, ax = plot_flexibility_portfolio_scatter(
+        diag,
+        outfile_stem="Figure-4b",
+        save_png=save_png,
+        save_pdf=save_pdf,
+        save_svg=save_svg,
+    )
+
+    keep_cols = [
+        "model",
+        "scenario",
+        "region",
+        "year",
+        "demand_response",
+        "spatial_resolution",
+        "storage",
+        "flexible_generation",
+        "flexible_demand",
+        "hydrogen",
+        "spatial",
+        "curtailment",
+        "breadth",
+        "balance",
+        "intensity",
+    ]
+
+    keep_cols = [c for c in keep_cols if c in diag.columns]
+
+    source_data = diag[keep_cols].copy()
+    source_data = source_data.sort_values("model").reset_index(drop=True)
 
     return fig, source_data

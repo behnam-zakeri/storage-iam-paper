@@ -117,7 +117,7 @@ def compute_flex_ratios_all(
     demand_flex_share: float = DEMAND_FLEX_SHARE,
 ) -> pd.DataFrame:
     """
-    Compute simplified flexibility indicators for Figure 4c.
+    Compute simplified flexibility indicators for Figure 4a.
 
     Parameters
     ----------
@@ -261,3 +261,98 @@ def get_storage_metric_column(indices: pd.DataFrame) -> str:
         if len(non_empty) == 1:
             return non_empty[0]
     return matches[0]
+
+
+def compute_flexibility_portfolio_diagnostics(
+    indices: pd.DataFrame,
+    indicator_cols: list[str],
+    model_col: str = "model",
+    tau: float = 0.03,
+    invert_curtailment: bool = False,
+) -> pd.DataFrame:
+    """
+    Compute flexibility portfolio diagnostics for Figure 4b.
+
+    Metrics
+    -------
+    breadth
+        Share of flexibility indicators above threshold tau.
+
+    balance
+        Normalized Shannon entropy across flexibility indicators.
+
+    intensity
+        Mean normalized indicator value.
+
+    Notes
+    -----
+    Flexible demand is based on r_flexible_demand_proxy but counted only for
+    models with High demand-response representation.
+    """
+    out = indices.copy()
+
+    if model_col not in out.columns:
+        if out.index.name == model_col:
+            out = out.reset_index()
+        else:
+            raise ValueError(f"'{model_col}' not found as column or index.")
+
+    required = [
+        "demand_response",
+        "r_flexible_demand_proxy",
+        *indicator_cols,
+    ]
+    missing = [c for c in required if c not in out.columns]
+
+    if missing:
+        raise ValueError(
+            "Missing required columns for flexibility portfolio diagnostics: "
+            + ", ".join(missing)
+        )
+
+    # Flexible demand proxy only counts when demand response is represented as High
+    out["r_flexible_demand"] = out["r_flexible_demand_proxy"].where(
+        out["demand_response"].astype(str).str.strip().str.lower().eq("high"),
+        0.0,
+    )
+
+    # Rename to clean diagnostic names
+    rename_map = {
+        get_storage_metric_column(out): "storage",
+        "r_flexible_gen_over_total_electricity": "flexible_generation",
+        "r_flexible_demand": "flexible_demand",
+        "r_h2_electrolyzer_capacity_over_total_elec_capacity": "hydrogen",
+        "r_spatial": "spatial",
+        "r_curt": "curtailment",
+    }
+
+    out = out.rename(columns=rename_map)
+
+    diagnostic_cols = [
+        "storage",
+        "flexible_generation",
+        "flexible_demand",
+        "hydrogen",
+        "spatial",
+        "curtailment",
+    ]
+
+    for col in diagnostic_cols:
+        out[col] = pd.to_numeric(out[col], errors="coerce").clip(0, 1)
+
+    if invert_curtailment:
+        out["curtailment"] = 1 - out["curtailment"]
+
+    x = out[diagnostic_cols].fillna(0.0).clip(0, 1)
+    k = len(diagnostic_cols)
+
+    out["breadth"] = (x > tau).sum(axis=1) / k
+    out["intensity"] = x.mean(axis=1)
+
+    row_sum = x.sum(axis=1)
+    p = x.div(row_sum.replace(0, np.nan), axis=0)
+
+    entropy = -(p * np.log(p)).where(p > 0, 0.0).sum(axis=1)
+    out["balance"] = (entropy / np.log(k)).fillna(0.0)
+
+    return out

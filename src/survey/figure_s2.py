@@ -15,7 +15,7 @@ from src.common.config import (
 from src.common.io_utils import read_excel_sheet
 
 
-def make_figure2(xlsx_file):
+def make_figure_s2(xlsx_file):
     df0 = read_excel_sheet(xlsx_file, SHEET_FIG2)
 
     df = df0.loc[:, df0.columns.isin(["Category", "Indicator", "Count"])].copy()

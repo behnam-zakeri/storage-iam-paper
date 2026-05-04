@@ -17,7 +17,7 @@ from src.survey.srf_utils import (
 )
 
 
-def make_figure3a(xlsx_file):
+def make_figure2a(xlsx_file):
     df_raw = read_excel_sheet(xlsx_file, SHEET_FIG3)
 
     dimension_col = df_raw.columns[0]

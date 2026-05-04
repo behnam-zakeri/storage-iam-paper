@@ -129,7 +129,7 @@ def _build_legend_handles(
     pypsa_hatch: str = "////",
 ) -> list:
     """
-    Build the custom legend used in Figure 4a.
+    Build the custom legend used in Figure 3a.
     """
     legend_elements = []
 
@@ -181,7 +181,7 @@ def _build_legend_handles(
     return legend_elements
 
 
-def make_figure4a(
+def make_figure3a(
     save_png: bool = True,
     save_pdf: bool = False,
     save_svg: bool = False,
@@ -191,7 +191,7 @@ def make_figure4a(
     years: list[int] | None = None,
 ):
     """
-    Manuscript Figure 4a:
+    Manuscript Figure 3a:
     Electricity storage in IAM net-zero scenarios vs benchmark studies.
 
     Returns

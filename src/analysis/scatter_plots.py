@@ -329,17 +329,15 @@ def _read_pypsa_ellipse_data() -> dict[str, object]:
     }
 
 
-# =========================================================
-# Figure 4b
-# =========================================================
-def make_figure4b(
+# Figure 3b
+def make_figure3b(
     save_png: bool = True,
     save_pdf: bool = False,
     save_svg: bool = False,
     add_pypsa: bool = True,
 ):
     """
-    Manuscript Figure 4b:
+    Manuscript Figure 3b:
     Electricity storage relative to peak demand vs VRE share.
     """
     _, eu_nzero, _ = load_analysis_data()
