@@ -24,7 +24,7 @@ from src.common.config import (
     H2_ELECTROLYZER_EFF,
     H2_CAPACITY_FACTOR,
     EJ_PER_GWYR,
-    LOAD_FACTOR_EU,
+    LOAD_FACTOR_ANALYSIS,
     EJYR_TO_GWAVG,
     DR_TIER_MAP,
     SPATIAL_RESOLUTION_MAP,
@@ -113,7 +113,7 @@ def compute_flex_ratios_all(
     scenario: str = SELECTED_SCENARIO,
     region: str = SELECTED_REGION,
     year: int = 2050,
-    storage_by_peakload: bool = False,
+    storage_by_peakload: bool = True,
     demand_flex_share: float = DEMAND_FLEX_SHARE,
 ) -> pd.DataFrame:
     """
@@ -184,7 +184,7 @@ def compute_flex_ratios_all(
 
     # Storage ratio
     if storage_by_peakload:
-        peak_load_gw = (fe_elec * EJYR_TO_GWAVG / LOAD_FACTOR_EU).rename(
+        peak_load_gw = (fe_elec * EJYR_TO_GWAVG / LOAD_FACTOR_ANALYSIS).rename(
             "Final Energy|Electricity|Peak"
         )
         r_storage = _safe_div(storage_power, peak_load_gw).rename(
@@ -356,3 +356,335 @@ def compute_flexibility_portfolio_diagnostics(
     out["balance"] = (entropy / np.log(k)).fillna(0.0)
 
     return out
+
+# =========================================================
+# Analysis 3: rank-correlation diagnostics
+# =========================================================
+
+def _add_vre_composition_indicators(
+    indices: pd.DataFrame,
+    idf: IamDataFrame,
+    year: int,
+) -> pd.DataFrame:
+    """
+    Add VRE, wind and solar generation shares to the flexibility-indicator table.
+
+    Shares are calculated relative to total electricity generation:
+        vre_share   = (wind + solar) / total electricity generation
+        wind_share  = wind / total electricity generation
+        solar_share = solar / total electricity generation
+
+    Solar fraction of VRE is:
+        solar_fraction_of_vre = solar / (wind + solar)
+    """
+    out = indices.copy()
+
+    if "model" not in out.columns:
+        out = out.reset_index()
+
+    idx = pd.Index(out["model"].unique(), name="model")
+
+    elec_total = _get_year_series(idf, VAR_ELEC_TOTAL, year).reindex(idx)
+    elec_wind = _get_year_series(idf, VAR_ELEC_WIND, year).reindex(idx)
+    elec_solar = _get_year_series(idf, VAR_ELEC_SOLAR, year).reindex(idx)
+
+    elec_vre = elec_wind + elec_solar
+
+    vre_comp = pd.DataFrame(
+        {
+            "model": idx,
+            "vre_share": _safe_div(elec_vre, elec_total).values,
+            "wind_share": _safe_div(elec_wind, elec_total).values,
+            "solar_share": _safe_div(elec_solar, elec_total).values,
+            "solar_fraction_of_vre": _safe_div(elec_solar, elec_vre).values,
+        }
+    )
+
+    out = out.merge(vre_comp, on="model", how="left")
+
+    return out
+
+
+def _rank_corr_pair(
+    df: pd.DataFrame,
+    x_col: str,
+    y_col: str,
+) -> dict[str, float | int]:
+    """
+    Calculate Spearman and Kendall rank correlations for one indicator pair.
+    P-values are intentionally not reported because the model sample is small.
+    """
+    tmp = df[[x_col, y_col]].replace([np.inf, -np.inf], np.nan).dropna()
+
+    if len(tmp) < 3:
+        return {
+            "n": len(tmp),
+            "spearman_rho": np.nan,
+            "kendall_tau": np.nan,
+        }
+
+    return {
+        "n": len(tmp),
+        "spearman_rho": tmp[x_col].corr(tmp[y_col], method="spearman"),
+        "kendall_tau": tmp[x_col].corr(tmp[y_col], method="kendall"),
+    }
+
+
+def compute_analysis3_storage_flexibility_correlations(
+    idf: IamDataFrame | pd.DataFrame | None = None,
+    scenario: str = SELECTED_SCENARIO,
+    region: str = SELECTED_REGION,
+    year: int = 2050,
+    include_benchmarks: bool = False,
+    exclude_models: list[str] | None = None,
+    tau: float = 0.03,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Analysis 3:
+    Rank-correlation diagnostics between electricity storage intensity and
+    VRE/flexibility indicators.
+
+    The dependent variable is electricity storage intensity:
+        storage power capacity / inferred peak electricity demand.
+
+    Returns
+    -------
+    analysis_df : DataFrame
+        Model-level diagnostic table used for correlations.
+
+    corr_table : DataFrame
+        Spearman and Kendall rank correlations between storage intensity and
+        VRE/flexibility indicators.
+    """
+
+    if exclude_models is None:
+        exclude_models = ["GCAM", "TIAM-ECN"]
+
+    if not include_benchmarks:
+        exclude_models = list(set(exclude_models + ["MEESA"]))
+
+    if idf is None:
+        _, eu_nzero, _ = load_analysis_data()
+        idf = eu_nzero
+
+    if isinstance(idf, pd.DataFrame):
+        idf = IamDataFrame(idf)
+
+    # Filter once for the chosen scenario-region-year
+    idf_sub = idf.filter(
+        scenario=scenario,
+        region=region,
+        year=year,
+    )
+
+    if exclude_models:
+        keep_models = [m for m in idf_sub.model if m not in exclude_models]
+        idf_sub = idf_sub.filter(model=keep_models)
+
+    # --------------------------------------------------------
+    # Compute Figure 5-style flexibility indicators,
+    # but with storage measured relative to peak demand.
+    # --------------------------------------------------------
+    indices = compute_flex_ratios_all(
+        idf=idf_sub,
+        scenario=scenario,
+        region=region,
+        year=year,
+        storage_by_peakload=True,
+    )
+
+    indices = indices.reset_index()
+
+    storage_col = get_storage_metric_column(indices)
+
+    # Flexible-demand treatment and portfolio diagnostics
+    indicator_cols = [
+        storage_col,
+        "r_flexible_gen_over_total_electricity",
+        "r_flexible_demand_proxy",
+        "r_h2_electrolyzer_capacity_over_total_elec_capacity",
+        "r_spatial",
+        "r_curt",
+    ]
+
+    diagnostics = compute_flexibility_portfolio_diagnostics(
+        indices=indices,
+        indicator_cols=indicator_cols,
+        model_col="model",
+        tau=tau,
+        invert_curtailment=False,
+    )
+
+    # Add VRE composition indicators
+    diagnostics = _add_vre_composition_indicators(
+        indices=diagnostics,
+        idf=idf_sub,
+        year=year,
+    )
+
+    # --------------------------------------------------------
+    # Clean and create non-storage flexibility diagnostics
+    # --------------------------------------------------------
+    diagnostics = diagnostics.rename(
+        columns={
+            "storage": "electricity_storage_intensity",
+            "flexible_generation": "flexible_generation_index",
+            "flexible_demand": "flexible_demand_index",
+            "hydrogen": "hydrogen_electrolysis_index",
+            "spatial": "spatial_flexibility_index",
+            "curtailment": "vre_curtailment_index",
+            "breadth": "portfolio_breadth_including_storage",
+            "balance": "portfolio_balance_including_storage",
+            "intensity": "portfolio_intensity_including_storage",
+        }
+    )
+
+    non_storage_cols = [
+        "flexible_generation_index",
+        "flexible_demand_index",
+        "hydrogen_electrolysis_index",
+        "spatial_flexibility_index",
+        "vre_curtailment_index",
+    ]
+
+    x_non_storage = (
+        diagnostics[non_storage_cols]
+        .apply(pd.to_numeric, errors="coerce")
+        .fillna(0.0)
+        .clip(0, 1)
+    )
+
+    k_non_storage = len(non_storage_cols)
+
+    diagnostics["non_storage_flexibility_breadth"] = (
+        (x_non_storage > tau).sum(axis=1) / k_non_storage
+    )
+
+    diagnostics["non_storage_flexibility_intensity"] = (
+        x_non_storage.mean(axis=1)
+    )
+
+    row_sum = x_non_storage.sum(axis=1)
+    p = x_non_storage.div(row_sum.replace(0, np.nan), axis=0)
+    entropy = -(p * np.log(p)).where(p > 0, 0.0).sum(axis=1)
+
+    diagnostics["non_storage_flexibility_balance"] = (
+        entropy / np.log(k_non_storage)
+    ).fillna(0.0)
+
+    # --------------------------------------------------------
+    # Correlation table
+    # --------------------------------------------------------
+    y_col = "electricity_storage_intensity"
+
+    corr_indicators = {
+        # VRE composition
+        "VRE share": "vre_share",
+        "Wind share": "wind_share",
+        "Solar share": "solar_share",
+        "Solar fraction of VRE": "solar_fraction_of_vre",
+
+        # Non-storage flexibility indicators
+        "Flexible generation": "flexible_generation_index",
+        "Flexible demand": "flexible_demand_index",
+        "Hydrogen electrolysis": "hydrogen_electrolysis_index",
+        "Spatial flexibility": "spatial_flexibility_index",
+        "VRE curtailment": "vre_curtailment_index",
+
+        # Portfolio diagnostics
+        "Portfolio breadth, incl. storage": "portfolio_breadth_including_storage",
+        "Portfolio balance, incl. storage": "portfolio_balance_including_storage",
+        "Portfolio intensity, incl. storage": "portfolio_intensity_including_storage",
+        "Non-storage flexibility breadth": "non_storage_flexibility_breadth",
+        "Non-storage flexibility balance": "non_storage_flexibility_balance",
+        "Non-storage flexibility intensity": "non_storage_flexibility_intensity",
+    }
+
+    rows = []
+
+    for label, x_col in corr_indicators.items():
+        if x_col not in diagnostics.columns:
+            continue
+
+        vals = _rank_corr_pair(
+            diagnostics,
+            x_col=x_col,
+            y_col=y_col,
+        )
+
+        rows.append(
+            {
+                "sample": f"{scenario}, {year}",
+                "outcome": y_col,
+                "indicator": label,
+                "indicator_column": x_col,
+                "n": vals["n"],
+                "spearman_rho": vals["spearman_rho"],
+                "kendall_tau": vals["kendall_tau"],
+            }
+        )
+
+    corr_table = pd.DataFrame(rows)
+
+    corr_table["abs_spearman_rho"] = corr_table["spearman_rho"].abs()
+
+    corr_table = corr_table.sort_values(
+        ["abs_spearman_rho", "indicator"],
+        ascending=[False, True],
+    ).reset_index(drop=True)
+
+    return diagnostics, corr_table
+
+
+def make_analysis3_table(
+    save_csv: bool = True,
+    include_benchmarks: bool = False,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Convenience wrapper for Analysis 3.
+    """
+    _, eu_nzero, _ = load_analysis_data()
+
+    analysis_df, corr_table = compute_analysis3_storage_flexibility_correlations(
+        idf=eu_nzero,
+        scenario=SELECTED_SCENARIO,
+        region=SELECTED_REGION,
+        year=2050,
+        include_benchmarks=include_benchmarks,
+    )
+
+    print("\nAnalysis 3 model-level diagnostic table:")
+    print(analysis_df)
+
+    print("\nAnalysis 3 rank-correlation table:")
+    print(corr_table[
+        [
+            "indicator",
+            "n",
+            "spearman_rho",
+            "kendall_tau",
+        ]
+    ])
+
+    if save_csv:
+        from src.common.config import ANALYSIS_OUTPUT_DIR
+
+        suffix = "with_benchmarks" if include_benchmarks else "iam_only"
+
+        analysis_df.to_csv(
+            ANALYSIS_OUTPUT_DIR / f"analysis3_model_level_diagnostics_{suffix}.csv",
+            index=False,
+        )
+
+        corr_table.to_csv(
+            ANALYSIS_OUTPUT_DIR / f"analysis3_storage_intensity_correlations_{suffix}.csv",
+            index=False,
+        )
+
+    return analysis_df, corr_table
+
+if __name__ == "__main__":
+    analysis3_df, analysis3_corr = make_analysis3_table(
+    save_csv=True,
+    include_benchmarks=False,  # IAM-only main diagnostic
+)
