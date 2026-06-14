@@ -286,7 +286,7 @@ VAR_STORAGE_REL_PEAK = "Relative Final Energy|Electricity|Storage to Peak"
 
 # Analysis numeric assumptions
 LOAD_FACTOR_ANALYSIS = 0.64
-LOAD_FACTOR_EU = 0.62
+# LOAD_FACTOR_EU = 0.62
 EJYR_TO_GWAVG = 31.7
 DEMAND_FLEX_SHARE = 0.20
 H2_ELECTROLYZER_EFF = 0.70

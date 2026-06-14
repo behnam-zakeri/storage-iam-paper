@@ -181,7 +181,7 @@ def _build_legend_handles(
     return legend_elements
 
 
-def make_figure3a(
+def make_boxplot(
     save_png: bool = True,
     save_pdf: bool = False,
     save_svg: bool = False,

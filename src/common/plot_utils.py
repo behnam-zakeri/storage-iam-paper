@@ -179,7 +179,7 @@ def scenario_path_legend_handles(
         Line2D(
             [], [],
             linestyle="none",
-            label="2030 → 2040",
+            label="2030 → 2040 →",
             marker="o",
             markersize=6,
             markerfacecolor="grey",
@@ -191,7 +191,7 @@ def scenario_path_legend_handles(
         Line2D(
             [], [],
             linestyle="none",
-            label="2050",
+            label="2050 (net-zero year)",
             marker="o",
             markersize=6,
             markerfacecolor="grey",
